@@ -50,16 +50,16 @@ public class RealmClient {
     }
 
     // Todo: Finish CRUD & run tests
-//    Task newTask = new Task("New Task 3");
-//    FutureTask<String> task = new FutureTask(new CreateCallable<Task>(realm, newTask));
-//    Thread t = new Thread(task);
-//        t.start();
-//        try {
-//        String str = task.get();
-//        System.out.println("DEBUG: " + str);
-//    } catch (Exception e) {
-//        System.out.println("DEBUG: future task failed" + e.getMessage());
-//    }
+    Task newTask = new Task("New Task 3");
+    FutureTask<String> task = new FutureTask(new CreateCallable<Task>(realm, newTask));
+    Thread t = new Thread(task);
+    t.start();
+    try {
+        String str = task.get();
+        System.out.println("DEBUG: " + str);
+    } catch (Exception e) {
+        System.out.println("DEBUG: future task failed" + e.getMessage());
+    }
 
     private void buildApp() {
         String appID = "increpeable-eixfd";
@@ -90,7 +90,7 @@ public class RealmClient {
         T object;
         Realm realm;
 
-        public CreateCallable( Realm realm, T object) {
+        public CreateCallable(Realm realm, T object) {
             this.realm = realm;
             this.object = object;
         }
