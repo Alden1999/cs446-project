@@ -3,17 +3,12 @@ package uwaterloo.cs446group7.increpeable.backend;
 import android.util.Log;
 import android.util.Pair;
 
-import org.bson.types.ObjectId;
-
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 
-import uwaterloo.cs446group7.increpeable.MainActivity;
-
-import io.realm.OrderedRealmCollectionChangeListener;
 import io.realm.Realm;
 import io.realm.RealmResults;
 import io.realm.RealmQuery;
@@ -22,19 +17,18 @@ import io.realm.mongodb.AppConfiguration;
 import io.realm.mongodb.Credentials;
 import io.realm.mongodb.User;
 import io.realm.mongodb.sync.SyncConfiguration;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 import io.realm.RealmObject;
 
 public class RealmClient {
     Realm realm;
     App app;
+    // Constructor
     public RealmClient() {
         buildApp();
         authenticate();
     }
+    // Destructor
     public void finalize() {
         // Close realm transactions
         realm.close();
@@ -49,24 +43,43 @@ public class RealmClient {
         });
     }
 
-    // Todo: Finish CRUD & run tests
-    Task newTask = new Task("New Task 3");
-    FutureTask<String> task = new FutureTask(new CreateCallable<Task>(realm, newTask));
-    Thread t = new Thread(task);
-    t.start();
-    try {
-        String str = task.get();
-        System.out.println("DEBUG: " + str);
-    } catch (Exception e) {
-        System.out.println("DEBUG: future task failed" + e.getMessage());
+    // Transaction result returned for readTrans; all other 3 transaction types simply return a boolean
+    public class TransactionResult <T extends RealmObject> {
+        public boolean isSuccess;
+        public List<T> results;
+        TransactionResult (boolean isSuccess) {this.isSuccess = isSuccess;}
     }
 
+    // Transaction calls to the Database; called by business logic layer
+    public <T extends RealmObject> boolean createTrans (T realmObject) {
+        FutureTask<Object> task = new FutureTask(new CreateCallable<T>(realm, realmObject));
+        boolean rv = runTask(task);
+        return rv;
+    }
+    public <T extends RealmObject> TransactionResult readTrans (Pair<String, String>[] criteria, Class<T> type, Object object) {
+        FutureTask<Object> task = new FutureTask(new ReadCallable(realm, criteria, type));
+        TransactionResult<T> result = runReadTask(task);
+        return result;
+    }
+    public <T extends RealmObject> boolean updateTrans (T realmObject, String object_id, Class<T> type) {
+        FutureTask<Object> task = new FutureTask(new UpdateCallable(realm, realmObject, object_id, type));
+        boolean rv = runTask(task);
+        return rv;
+    }
+    public <T extends RealmObject> boolean deleteTrans (String object_id, Class<T> type) {
+        FutureTask<Object> task = new FutureTask(new DeleteCallable(realm, object_id, type));
+        boolean rv = runTask(task);
+        return rv;
+    }
+
+    // To build the MongoDB Realm App
     private void buildApp() {
         String appID = "increpeable-eixfd";
         app = new App(new AppConfiguration.Builder(appID)
                 .build());
     }
 
+    // Log in to MongoDB Realm App, to perform transactions
     private void authenticate() {
         // login
         Credentials credentials = Credentials.anonymous();
@@ -86,7 +99,37 @@ public class RealmClient {
         });
     }
 
-    public class CreateCallable <T extends RealmObject> implements Callable {
+    // Run an async task for create, update, delete
+    private boolean runTask(FutureTask<Object> task) {
+        Thread t = new Thread(task);
+        t.start();
+        try {
+            task.get();
+            Log.i("MongoDB", "Create transaction succeeds.");
+            return true;
+        } catch (Exception e) {
+            Log.e("MongoDB", "Create transaction failed." + e.getMessage());
+            return false;
+        }
+    }
+
+    // Run an async task for read
+    private <T extends RealmObject> TransactionResult runReadTask(FutureTask<Object> task) {
+        Thread t = new Thread(task);
+        t.start();
+        TransactionResult<T> tr = new TransactionResult<T>(false);
+        try {
+            tr.results = new ArrayList<>((Collection<T>)task.get());
+            tr.isSuccess = true;
+            Log.i("MongoDB", "Create transaction succeeds.");
+            return tr;
+        } catch (Exception e) {
+            Log.e("MongoDB", "Create transaction failed." + e.getMessage());
+            return tr;
+        }
+    }
+
+    private class CreateCallable <T extends RealmObject> implements Callable {
         T object;
         Realm realm;
 
@@ -99,13 +142,14 @@ public class RealmClient {
             realm.executeTransaction (transactionRealm -> {
                 transactionRealm.insert(object);
             });
-            return 0;
+            return true;
         }
     }
 
-    public class ReadCallable <T extends RealmObject> implements Callable {
+    private class ReadCallable <T extends RealmObject> implements Callable {
         Realm realm;
-        Pair<String, String>[] criteria;
+        // criteria format: array of <String type, String key, String value>
+        Pair<String, String>[]criteria;
         Class<T> type;
         public ReadCallable(Realm realm, Pair<String, String>[] criteria, Class<T> type) {
             this.realm = realm;
@@ -115,16 +159,15 @@ public class RealmClient {
 
         @Override
         public Object call() {
-//            RealmResults<T> results;
-            RealmQuery<T> result = realm.where(type);
+            RealmQuery<T> results = realm.where(type);
             for (int i = 0; i < criteria.length; i++) {
-                result = result.equalTo(criteria[i].first, criteria[i].second);
+                results = results.equalTo(criteria[i].first, criteria[i].second);
             }
-            return realm.copyFromRealm(result.findAll());
+            return realm.copyFromRealm(results.findAll());
         }
     }
 
-    public class UpdateCallable <T extends RealmObject> implements Callable {
+    private class UpdateCallable <T extends RealmObject> implements Callable {
         private Realm realm;
         private String object_id;
         private T object;
@@ -143,11 +186,11 @@ public class RealmClient {
                 objectFound.deleteFromRealm();
                 transactionRealm.insert(object);
             });
-            return 0;
+            return true;
         }
     }
 
-    public class DeleteCallable <T extends RealmObject> implements Callable {
+    private class DeleteCallable <T extends RealmObject> implements Callable {
         Realm realm;
         String object_id;
         Class<T> type;
@@ -163,7 +206,7 @@ public class RealmClient {
                 T objectFound = transactionRealm.where(type).equalTo("_id", object_id).findFirst();
                 objectFound.deleteFromRealm();
             });
-            return 0;
+            return true;
         }
     }
 }
