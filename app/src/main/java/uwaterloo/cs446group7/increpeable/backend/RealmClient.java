@@ -56,7 +56,7 @@ public class RealmClient {
         boolean rv = runTask(task);
         return rv;
     }
-    public <T extends RealmObject> TransactionResult readTrans (Pair<String, String>[] criteria, Class<T> type, Object object) {
+    public <T extends RealmObject> TransactionResult readTrans (List<Pair<String, String>> criteria, Class<T> type) {
         FutureTask<Object> task = new FutureTask(new ReadCallable(realm, criteria, type));
         TransactionResult<T> result = runReadTask(task);
         return result;
@@ -149,9 +149,9 @@ public class RealmClient {
     private class ReadCallable <T extends RealmObject> implements Callable {
         Realm realm;
         // criteria format: array of <String type, String key, String value>
-        Pair<String, String>[]criteria;
+        List<Pair<String, String>> criteria;
         Class<T> type;
-        public ReadCallable(Realm realm, Pair<String, String>[] criteria, Class<T> type) {
+        public ReadCallable(Realm realm, List<Pair<String, String>> criteria, Class<T> type) {
             this.realm = realm;
             this.criteria = criteria;
             this.type = type;
@@ -160,8 +160,8 @@ public class RealmClient {
         @Override
         public Object call() {
             RealmQuery<T> results = realm.where(type);
-            for (int i = 0; i < criteria.length; i++) {
-                results = results.equalTo(criteria[i].first, criteria[i].second);
+            for (int i = 0; i < criteria.size(); i++) {
+                results = results.equalTo(criteria.get(i).first, criteria.get(i).second);
             }
             return realm.copyFromRealm(results.findAll());
         }
